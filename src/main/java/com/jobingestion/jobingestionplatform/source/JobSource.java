@@ -44,4 +44,10 @@ public class JobSource {
     public void onUpdate(){
         this.updatedAt = LocalDateTime.now();
     }
+
+    public JobSource(String companyName, String careerUrl, Boolean active) {
+        this.companyName = companyName;
+        this.careerUrl = careerUrl;
+        this.activeStatus = active;
+    }
 }
