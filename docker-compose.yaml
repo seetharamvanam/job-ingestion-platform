@@ -1,0 +1,35 @@
+services:
+  db:
+    image: postgres:latest
+    container_name: job_ingestion_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: jobIngestion
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    networks:
+      - app-network
+
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: job_ingestion_postgres_gui
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@example.com
+      PGADMIN_DEFAULT_PASSWORD: password
+    ports:
+      - "8181:80"
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+
+volumes:
+  postgres_data:
+
+networks:
+  app-network:
