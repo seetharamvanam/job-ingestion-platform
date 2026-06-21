@@ -1,5 +1,7 @@
 package com.jobingestion.jobingestionplatform.ingestion;
 
+import com.jobingestion.jobingestionplatform.filter.JobFilter;
+import com.jobingestion.jobingestionplatform.filter.SoftwareJobFilter;
 import com.jobingestion.jobingestionplatform.job.JobPosting;
 import com.jobingestion.jobingestionplatform.job.JobPostingRepository;
 import com.jobingestion.jobingestionplatform.parser.GreenhouseParser;
@@ -20,17 +22,20 @@ public class JobIngestionService {
     private final GreenhouseScraper greenhouseScraper;
     private final GreenhouseParser greenhouseParser;
     private final JobPostingRepository jobPostingRepository;
+    private final JobFilter jobFilter;
 
     public JobIngestionService(
             JobSourceRepository jobSourceRepository,
             GreenhouseParser greenhouseParser,
             GreenhouseScraper greenhouseScraper,
-            JobPostingRepository jobPostingRepository
+            JobPostingRepository jobPostingRepository,
+            JobFilter jobFilter
     ){
         this.jobSourceRepository = jobSourceRepository;
         this.greenhouseParser = greenhouseParser;
         this.greenhouseScraper = greenhouseScraper;
         this.jobPostingRepository = jobPostingRepository;
+        this.jobFilter = jobFilter;
     }
 
 
@@ -46,6 +51,10 @@ public class JobIngestionService {
                 List<JobPosting> jobPostingList = new ArrayList<>();
                 found += parsedJobs.size();
                 for (ParsedJob parsedJob : parsedJobs) {
+                    if(!jobFilter.isRelevant(parsedJob)){
+                        skipped++;
+                        continue;
+                    }
                     boolean exists = jobPostingRepository.existsByJobSourceAndExternalJobId(jobSource, parsedJob.externalJobId());
                     if(exists){
                         skipped++;
@@ -57,7 +66,9 @@ public class JobIngestionService {
                                 .department(parsedJob.department())
                                 .location(parsedJob.location())
                                 .jobUrl(parsedJob.jobUrl())
-                                .jobSource(jobSource).build();
+                                .jobSource(jobSource)
+                                .jobDescription(parsedJob.jobDescription())
+                                .build();
                     jobPostingList.add(jobPosting);
                     inserted++;
                 }

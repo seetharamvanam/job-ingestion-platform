@@ -45,6 +45,9 @@ public class JobPosting {
     @Column
     private String jobUrl;
 
+    @Column(columnDefinition = "TEXT")
+    private String jobDescription;
+
     @Column
     private LocalDateTime discoveredAt;
 
