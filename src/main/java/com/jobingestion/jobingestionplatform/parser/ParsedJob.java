@@ -5,6 +5,7 @@ public record ParsedJob(
         String title,
         String department,
         String location,
-        String jobUrl
+        String jobUrl,
+        String jobDescription
 ) {
 }

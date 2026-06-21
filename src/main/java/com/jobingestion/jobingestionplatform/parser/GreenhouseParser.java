@@ -32,12 +32,15 @@ public class GreenhouseParser implements JobBoardParser {
                 String location = link.selectFirst("p.body__secondary.body--metadata") != null
                         ? link.selectFirst("p.body__secondary.body--metadata").text() : "";
 
+                String description = "";
+
                 parsedJobs.add(new ParsedJob(
                         externalJobId,
                         title,
                         department,
                         location,
-                        jobUrl
+                        jobUrl,
+                        description
                 ));
             }
         }
