@@ -7,4 +7,5 @@ import java.util.List;
 public interface JobBoardParser {
 
     List<ParsedJob> parse(Document document);
+    int extractTotalPages(Document document);
 }

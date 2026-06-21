@@ -51,4 +51,15 @@ public class GreenhouseParser implements JobBoardParser {
         String[] parts = jobUrl.split("/");
         return Long.parseLong(parts[parts.length-1]);
     }
+
+    @Override
+    public int extractTotalPages(Document document) {
+        return document.select("button.pagination__link")
+                .stream()
+                .map(Element :: text)
+                .filter(text -> text.matches("\\d+"))
+                .mapToInt(Integer::parseInt)
+                .max()
+                .orElse(1);
+    }
 }
