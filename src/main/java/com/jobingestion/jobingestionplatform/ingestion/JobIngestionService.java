@@ -8,6 +8,7 @@ import com.jobingestion.jobingestionplatform.parser.ParsedJob;
 import com.jobingestion.jobingestionplatform.scraper.GreenhouseScraper;
 import com.jobingestion.jobingestionplatform.source.JobSource;
 import com.jobingestion.jobingestionplatform.source.JobSourceRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 
@@ -15,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 @Service
+@Slf4j
 public class JobIngestionService {
 
     private final JobSourceRepository jobSourceRepository;
@@ -39,6 +41,7 @@ public class JobIngestionService {
 
 
     public IngestionSummary ingestJobs() {
+        long startTime = System.currentTimeMillis();
         int found = 0;
         int inserted = 0;
         int skipped = 0;
@@ -59,15 +62,21 @@ public class JobIngestionService {
                     inserted += pageSummary.jobsInserted();
                     skipped += pageSummary.jobsSkipped();
                 }
-                System.out.println("Total pages: " + totalPages);
+                log.info("Total pages found for {}: {}", jobSource.getCompanyName(),totalPages);
 
             } catch (Exception e) {
-                System.out.println("Failed to ingest source: " + jobSource.getCareerUrl());
-                System.out.println(e.getMessage());
+                log.error("Failed to ingest source: {}", jobSource.getCareerUrl());
                 continue;
             }
         }
-
+        long endTime = System.currentTimeMillis();
+        log.info(
+                "Ingestion completed in {} ms. Found {}, Inserted {}, Skipped {}",
+                endTime - startTime,
+                found,
+                inserted,
+                skipped
+        );
         return new IngestionSummary(found, inserted, skipped);
 
     }
