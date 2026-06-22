@@ -2,10 +2,7 @@ package com.jobingestion.jobingestionplatform.job;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
@@ -22,8 +19,11 @@ public class JobController {
 
 
     @GetMapping
-    public ResponseEntity<List<JobSummaryResponse>> searchJobs() {
-        return new ResponseEntity<>(jobService.searchForJobs(), HttpStatus.OK);
+    public ResponseEntity<JobPageResponse> searchJobs(
+            @RequestParam(name = "page", required = false, defaultValue = "0") int page,
+            @RequestParam(name = "size", required = false, defaultValue = "20") int size
+    ) {
+        return new ResponseEntity<>(jobService.searchForJobs(page, size), HttpStatus.OK);
     }
 
     @GetMapping("/{id}")
