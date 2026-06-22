@@ -1,5 +1,7 @@
 package com.jobingestion.jobingestionplatform.ingestion;
 
+import com.jobingestion.jobingestionplatform.detail.JobDetail;
+import com.jobingestion.jobingestionplatform.detail.JobDetailParser;
 import com.jobingestion.jobingestionplatform.filter.JobFilter;
 import com.jobingestion.jobingestionplatform.job.JobPosting;
 import com.jobingestion.jobingestionplatform.job.JobPostingRepository;
@@ -24,19 +26,22 @@ public class JobIngestionService {
     private final GreenhouseParser greenhouseParser;
     private final JobPostingRepository jobPostingRepository;
     private final JobFilter jobFilter;
+    private final JobDetailParser jobDetailParser;
 
     public JobIngestionService(
             JobSourceRepository jobSourceRepository,
             GreenhouseParser greenhouseParser,
             GreenhouseScraper greenhouseScraper,
             JobPostingRepository jobPostingRepository,
-            JobFilter jobFilter
+            JobFilter jobFilter,
+            JobDetailParser jobDetailParser
     ){
         this.jobSourceRepository = jobSourceRepository;
         this.greenhouseParser = greenhouseParser;
         this.greenhouseScraper = greenhouseScraper;
         this.jobPostingRepository = jobPostingRepository;
         this.jobFilter = jobFilter;
+        this.jobDetailParser = jobDetailParser;
     }
 
 
@@ -65,7 +70,7 @@ public class JobIngestionService {
                 log.info("Total pages found for {}: {}", jobSource.getCompanyName(),totalPages);
 
             } catch (Exception e) {
-                log.error("Failed to ingest source: {}", jobSource.getCareerUrl());
+                log.error("Failed to ingest source: {}", jobSource.getCareerUrl(), e);
                 continue;
             }
         }
@@ -98,6 +103,14 @@ public class JobIngestionService {
                     skipped++;
                     continue;
                 }
+                String jobDescription = "";
+                try {
+                    Document jobPostingDetailsDocument = greenhouseScraper.scrapeJobBoard(parsedJob.jobUrl());
+                    JobDetail jobPostingDetails = jobDetailParser.parse(jobPostingDetailsDocument);
+                    jobDescription = jobPostingDetails.description();
+                }catch (Exception e){
+                    log.warn("Failed to parse job posting details: {}", parsedJob.jobUrl(), e);
+                }
                 JobPosting jobPosting = JobPosting.builder()
                         .externalJobId(parsedJob.externalJobId())
                         .title(parsedJob.title())
@@ -105,7 +118,7 @@ public class JobIngestionService {
                         .location(parsedJob.location())
                         .jobUrl(parsedJob.jobUrl())
                         .jobSource(jobSource)
-                        .jobDescription(parsedJob.jobDescription())
+                        .jobDescription(jobDescription)
                         .build();
                 jobPostingList.add(jobPosting);
                 inserted++;
