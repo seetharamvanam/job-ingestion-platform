@@ -3,6 +3,8 @@ package com.jobingestion.jobingestionplatform.ingestion;
 import com.jobingestion.jobingestionplatform.detail.JobDetail;
 import com.jobingestion.jobingestionplatform.detail.JobDetailParser;
 import com.jobingestion.jobingestionplatform.filter.JobFilter;
+import com.jobingestion.jobingestionplatform.ingestionrun.IngestionRun;
+import com.jobingestion.jobingestionplatform.ingestionrun.IngestionRunDetails;
 import com.jobingestion.jobingestionplatform.job.JobPosting;
 import com.jobingestion.jobingestionplatform.job.JobPostingRepository;
 import com.jobingestion.jobingestionplatform.parser.GreenhouseParser;
@@ -70,6 +72,7 @@ public class JobIngestionService {
                 log.info("Total pages found for {}: {}", jobSource.getCompanyName(),totalPages);
 
             } catch (Exception e) {
+                //throw new RuntimeException("Testing ingestion failure");
                 log.error("Failed to ingest source: {}", jobSource.getCareerUrl(), e);
                 continue;
             }
