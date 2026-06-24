@@ -11,4 +11,5 @@ public interface JobSourceRepository extends JpaRepository<JobSource, Long> {
 
     Optional<JobSource> findByCareerUrl(String careerUrl);
     List<JobSource> findByActiveStatusTrue();
+    JobSource findByCompanyNameAndActiveStatusTrue(String companyName);
 }

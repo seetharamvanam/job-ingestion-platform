@@ -53,6 +53,9 @@ public class JobIngestionService {
         int inserted = 0;
         int skipped = 0;
         List<JobSource> activeSourceList = jobSourceRepository.findByActiveStatusTrue();
+        if(activeSourceList.isEmpty()){
+            log.warn("No active job sources available for ingestion");
+        }
         for (JobSource jobSource : activeSourceList) {
             try {
                 Document firstPage = greenhouseScraper.scrapeJobBoard(jobSource.getCareerUrl());
