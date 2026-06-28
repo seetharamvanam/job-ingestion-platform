@@ -1,4 +1,4 @@
-package com.jobingestion.jobingestionplatform.parser;
+package com.jobingestion.jobingestionplatform.provider.greenhouse.parser;
 
 public record ParsedJob(
         Long externalJobId,

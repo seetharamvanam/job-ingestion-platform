@@ -1,6 +1,8 @@
 package com.jobingestion.jobingestionplatform.detail;
 
 
+import com.jobingestion.jobingestionplatform.provider.greenhouse.detail.GreenhouseJobDetailParser;
+import com.jobingestion.jobingestionplatform.provider.greenhouse.detail.JobDetail;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.junit.jupiter.api.BeforeEach;
@@ -63,9 +65,9 @@ public class GreenHouseJobDetailParserTest {
     @Test
     void shouldExtractJobDescriptionWhenJobDescriptionExists(){
         Document document = Jsoup.parse(html);
-        JobDetail jobDetail = greenhouseJobDetailParser.parse(document);
-        assertTrue(jobDetail.description().contains("About the Team"));
-        assertTrue(jobDetail.description().contains("1-2 years"));
+        String jobDetail = greenhouseJobDetailParser.parse(document);
+        assertTrue(jobDetail.contains("About the Team"));
+        assertTrue(jobDetail.contains("1-2 years"));
     }
 
     @Test
@@ -76,8 +78,8 @@ public class GreenHouseJobDetailParserTest {
                 "  </body>\n" +
                 "</html>";
         Document document = Jsoup.parse(HTML);
-        JobDetail jobDetail = greenhouseJobDetailParser.parse(document);
-        assertFalse(jobDetail.description().equals("Unknown"));
-        assertTrue(jobDetail.description().isEmpty());
+        String jobDetail = greenhouseJobDetailParser.parse(document);
+        assertFalse(jobDetail.equals("Unknown"));
+        assertTrue(jobDetail.isEmpty());
     }
 }

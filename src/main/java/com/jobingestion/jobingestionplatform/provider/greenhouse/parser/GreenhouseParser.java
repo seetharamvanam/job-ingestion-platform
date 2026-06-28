@@ -1,5 +1,6 @@
-package com.jobingestion.jobingestionplatform.parser;
+package com.jobingestion.jobingestionplatform.provider.greenhouse.parser;
 
+import com.jobingestion.jobingestionplatform.provider.model.ScrapedJob;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Component;
@@ -11,8 +12,8 @@ import java.util.List;
 public class GreenhouseParser implements JobBoardParser {
 
     @Override
-    public List<ParsedJob> parse(Document document) {
-        List<ParsedJob> parsedJobs = new ArrayList<>();
+    public List<ScrapedJob> parse(Document document) {
+        List<ScrapedJob> parsedJobs = new ArrayList<>();
 
         for (Element departmentSection : document.select("div.job-posts--table--department")){
             String department = departmentSection.selectFirst("h3.section-header") != null
@@ -24,7 +25,7 @@ public class GreenhouseParser implements JobBoardParser {
                 if(link == null){continue;}
 
                 String jobUrl = link.attr("href");
-                Long externalJobId = extractJobId(jobUrl);
+                String externalJobId = extractJobId(jobUrl);
 
                 String title = link.selectFirst("p.body--medium") != null
                         ? link.selectFirst("p.body--medium").text() : "";
@@ -34,7 +35,7 @@ public class GreenhouseParser implements JobBoardParser {
 
                 String description = "";
 
-                parsedJobs.add(new ParsedJob(
+                parsedJobs.add(new ScrapedJob(
                         externalJobId,
                         title,
                         department,
@@ -47,9 +48,9 @@ public class GreenhouseParser implements JobBoardParser {
         return  parsedJobs;
     }
 
-    private Long extractJobId(String jobUrl){
+    private String extractJobId(String jobUrl){
         String[] parts = jobUrl.split("/");
-        return Long.parseLong(parts[parts.length-1]);
+        return parts[parts.length-1];
     }
 
     @Override
