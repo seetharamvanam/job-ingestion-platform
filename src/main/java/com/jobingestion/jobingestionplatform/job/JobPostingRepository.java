@@ -10,8 +10,8 @@ import java.util.Optional;
 @Repository
 public interface JobPostingRepository extends JpaRepository<JobPosting, Long> {
 
-    Boolean existsByJobSourceAndExternalJobId(JobSource jobSource, Long externalJobId);
+    Boolean existsByJobSourceAndExternalJobId(JobSource jobSource, String externalJobId);
     List<JobPosting> findByJobSource(JobSource jobSource);
-    Optional<JobPosting> findByExternalJobId(Long externalJobId);
+    Optional<JobPosting> findByExternalJobId(String externalJobId);
 
 }

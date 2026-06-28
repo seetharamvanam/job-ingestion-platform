@@ -26,7 +26,7 @@ public class JobPosting {
     private Long id;
 
     @Column(name = "external_job_id", nullable = false)
-    private Long externalJobId;
+    private String externalJobId;
 
 
     @ManyToOne(fetch =  FetchType.LAZY, optional = false)
@@ -56,6 +56,16 @@ public class JobPosting {
 
     @Column
     private LocalDateTime updatedAt;
+
+    public JobPosting(String externalJobId, String title, String department, String location, String jobUrl, JobSource jobSource, String description) {
+        this.externalJobId = externalJobId;
+        this.title = title;
+        this.department = department;
+        this.location = location;
+        this.jobUrl = jobUrl;
+        this.jobSource = jobSource;
+        this.jobDescription = description;
+    }
 
     @PrePersist
     public void onCreate() {

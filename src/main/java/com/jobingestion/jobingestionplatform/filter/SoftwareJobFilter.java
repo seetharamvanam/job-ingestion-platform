@@ -1,6 +1,6 @@
 package com.jobingestion.jobingestionplatform.filter;
 
-import com.jobingestion.jobingestionplatform.parser.ParsedJob;
+import com.jobingestion.jobingestionplatform.provider.model.ScrapedJob;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
@@ -25,8 +25,8 @@ public class SoftwareJobFilter implements JobFilter{
     );
 
     @Override
-    public boolean isRelevant(ParsedJob parsedJob) {
-        String text = (parsedJob.title() + " " + parsedJob.department()).toLowerCase();
+    public boolean isRelevant(ScrapedJob scrapedJob) {
+        String text = (scrapedJob.title() + " " + scrapedJob.department()).toLowerCase();
         return KEYWORDS.stream().anyMatch(text::contains);
     }
 }

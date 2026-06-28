@@ -1,4 +1,4 @@
-package com.jobingestion.jobingestionplatform.scraper;
+package com.jobingestion.jobingestionplatform.provider.greenhouse.scraper;
 
 import org.jsoup.nodes.Document;
 

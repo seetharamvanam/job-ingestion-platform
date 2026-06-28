@@ -1,19 +1,15 @@
 package com.jobingestion.jobingestionplatform.ingestion;
 
-import com.jobingestion.jobingestionplatform.detail.JobDetail;
-import com.jobingestion.jobingestionplatform.detail.JobDetailParser;
+import com.jobingestion.jobingestionplatform.job.mapper.JobPostingMapper;
+import com.jobingestion.jobingestionplatform.provider.JobBoardProvider;
+import com.jobingestion.jobingestionplatform.provider.JobBoardProviderFactory;
 import com.jobingestion.jobingestionplatform.filter.JobFilter;
-import com.jobingestion.jobingestionplatform.ingestionrun.IngestionRun;
-import com.jobingestion.jobingestionplatform.ingestionrun.IngestionRunDetails;
 import com.jobingestion.jobingestionplatform.job.JobPosting;
 import com.jobingestion.jobingestionplatform.job.JobPostingRepository;
-import com.jobingestion.jobingestionplatform.parser.GreenhouseParser;
-import com.jobingestion.jobingestionplatform.parser.ParsedJob;
-import com.jobingestion.jobingestionplatform.scraper.GreenhouseScraper;
+import com.jobingestion.jobingestionplatform.provider.model.ScrapedJob;
 import com.jobingestion.jobingestionplatform.source.JobSource;
 import com.jobingestion.jobingestionplatform.source.JobSourceRepository;
 import lombok.extern.slf4j.Slf4j;
-import org.jsoup.nodes.Document;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -23,62 +19,42 @@ import java.util.List;
 @Slf4j
 public class JobIngestionService {
 
-    private final JobSourceRepository jobSourceRepository;
-    private final GreenhouseScraper greenhouseScraper;
-    private final GreenhouseParser greenhouseParser;
-    private final JobPostingRepository jobPostingRepository;
     private final JobFilter jobFilter;
-    private final JobDetailParser jobDetailParser;
+    private final JobPostingRepository jobPostingRepository;
+    private final JobSourceRepository jobSourceRepository;
+    private final JobBoardProviderFactory providerFactory;
+    private final JobPostingMapper jobPostingMapper;
 
     public JobIngestionService(
-            JobSourceRepository jobSourceRepository,
-            GreenhouseParser greenhouseParser,
-            GreenhouseScraper greenhouseScraper,
-            JobPostingRepository jobPostingRepository,
             JobFilter jobFilter,
-            JobDetailParser jobDetailParser
-    ){
-        this.jobSourceRepository = jobSourceRepository;
-        this.greenhouseParser = greenhouseParser;
-        this.greenhouseScraper = greenhouseScraper;
-        this.jobPostingRepository = jobPostingRepository;
-        this.jobFilter = jobFilter;
-        this.jobDetailParser = jobDetailParser;
-    }
+            JobPostingRepository jobPostingRepository,
+            JobSourceRepository jobSourceRepository,
+            JobBoardProviderFactory providerFactory,
+            JobPostingMapper jobPostingMapper
+    ) {
 
+        this.jobFilter = jobFilter;
+        this.jobPostingRepository = jobPostingRepository;
+        this.jobSourceRepository = jobSourceRepository;
+        this.providerFactory = providerFactory;
+        this.jobPostingMapper = jobPostingMapper;
+    }
 
     public IngestionSummary ingestJobs() {
         long startTime = System.currentTimeMillis();
+        // Initialize the parameters found, skipped and Inserted to zero
         int found = 0;
-        int inserted = 0;
         int skipped = 0;
+        int inserted = 0;
         List<JobSource> activeSourceList = jobSourceRepository.findByActiveStatusTrue();
-        if(activeSourceList.isEmpty()){
+        if (activeSourceList.isEmpty()) {
             log.warn("No active job sources available for ingestion");
         }
         for (JobSource jobSource : activeSourceList) {
-            try {
-                Document firstPage = greenhouseScraper.scrapeJobBoard(jobSource.getCareerUrl());
-                int totalPages = greenhouseParser.extractTotalPages(firstPage);
-                IngestionSummary firstPageSummary = processDocument(firstPage, jobSource);
-                found += firstPageSummary.jobsFound();
-                inserted += firstPageSummary.jobsInserted();
-                skipped += firstPageSummary.jobsSkipped();
-                for (int page = 2; page <= totalPages; page++) {
-                    String pageUrl = jobSource.getCareerUrl() + "?page=" + page;
-                    Document pageDocument = greenhouseScraper.scrapeJobBoard(pageUrl);
-                    IngestionSummary pageSummary = processDocument(pageDocument, jobSource);
-                    found += pageSummary.jobsFound();
-                    inserted += pageSummary.jobsInserted();
-                    skipped += pageSummary.jobsSkipped();
-                }
-                log.info("Total pages found for {}: {}", jobSource.getCompanyName(),totalPages);
-
-            } catch (Exception e) {
-                //throw new RuntimeException("Testing ingestion failure");
-                log.error("Failed to ingest source: {}", jobSource.getCareerUrl(), e);
-                continue;
-            }
+            IngestionSummary summary = processSource(jobSource);
+            found += summary.jobsFound();
+            skipped += summary.jobsSkipped();
+            inserted += summary.jobsInserted();
         }
         long endTime = System.currentTimeMillis();
         log.info(
@@ -89,47 +65,41 @@ public class JobIngestionService {
                 skipped
         );
         return new IngestionSummary(found, inserted, skipped);
-
     }
 
-    private IngestionSummary processDocument(Document currentPage, JobSource jobSource){
+
+    private IngestionSummary processSource(JobSource jobSource) {
         int found = 0;
-        int inserted = 0;
         int skipped = 0;
-            List<ParsedJob> parsedJobs = greenhouseParser.parse(currentPage);
-            List<JobPosting> jobPostingList = new ArrayList<>();
-            found += parsedJobs.size();
-            for (ParsedJob parsedJob : parsedJobs) {
-                if(!jobFilter.isRelevant(parsedJob)){
-                    skipped++;
-                    continue;
-                }
-                boolean exists = jobPostingRepository.existsByJobSourceAndExternalJobId(jobSource, parsedJob.externalJobId());
-                if(exists){
-                    skipped++;
-                    continue;
-                }
-                String jobDescription = "";
-                try {
-                    Document jobPostingDetailsDocument = greenhouseScraper.scrapeJobBoard(parsedJob.jobUrl());
-                    JobDetail jobPostingDetails = jobDetailParser.parse(jobPostingDetailsDocument);
-                    jobDescription = jobPostingDetails.description();
-                }catch (Exception e){
-                    log.warn("Failed to parse job posting details: {}", parsedJob.jobUrl(), e);
-                }
-                JobPosting jobPosting = JobPosting.builder()
-                        .externalJobId(parsedJob.externalJobId())
-                        .title(parsedJob.title())
-                        .department(parsedJob.department())
-                        .location(parsedJob.location())
-                        .jobUrl(parsedJob.jobUrl())
-                        .jobSource(jobSource)
-                        .jobDescription(jobDescription)
-                        .build();
-                jobPostingList.add(jobPosting);
-                inserted++;
+        int inserted = 0;
+        List<JobPosting> listOfJobPostings = new ArrayList<>();
+        JobBoardProvider provider = providerFactory.getProvider(jobSource.getProvider());
+        // Method call to fetch jobs in greenHouseProvider to get list of jobs from a single jobSource
+        List<ScrapedJob> listOfJobs = provider.fetchJobs(jobSource);
+        found += listOfJobs.size();
+        for (ScrapedJob scrapedJob : listOfJobs) {
+            // For each Job from the list of Jobs scraped, we are checking whether the job is relevant to
+            // Software Engineering.
+            boolean isRelevantJob = jobFilter.isRelevant(scrapedJob);
+            // Checking whether the job already exists in the database.
+            boolean isDuplicateJob = jobPostingRepository.existsByJobSourceAndExternalJobId(
+                    jobSource, scrapedJob.externalJobId());
+            if (isDuplicateJob) {
+                skipped++;
+                continue;
             }
-            jobPostingRepository.saveAll(jobPostingList);
-            return new IngestionSummary(found, inserted, skipped);
+            if (!isRelevantJob) {
+                skipped++;
+                continue;
+            }
+            // If the job posting is relevant job posting and it does not exist in database, then we are
+            // retrieving job description by scraping the job posting page and saving the data into the database.
+            ScrapedJob enrichedJob = provider.fetchJobDetails(scrapedJob);
+            listOfJobPostings.add(jobPostingMapper.toEntity(enrichedJob, jobSource));
+            inserted++;
+        }
+        jobPostingRepository.saveAll(listOfJobPostings);
+
+        return new IngestionSummary(found, inserted, skipped);
     }
 }

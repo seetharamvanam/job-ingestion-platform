@@ -33,6 +33,10 @@ public class JobSource {
     @Column
     private LocalDateTime updatedAt;
 
+    @Column(nullable = false)
+    @Enumerated(EnumType.STRING)
+    private JobBoardProviderType provider;
+
 
     @PrePersist
     public void onCreate(){
