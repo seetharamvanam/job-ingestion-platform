@@ -2,7 +2,6 @@ package com.jobingestion.jobingestionplatform.provider.greenhouse;
 
 import com.jobingestion.jobingestionplatform.provider.JobBoardProvider;
 import com.jobingestion.jobingestionplatform.provider.greenhouse.detail.GreenhouseJobDetailParser;
-import com.jobingestion.jobingestionplatform.provider.greenhouse.detail.JobDetail;
 import com.jobingestion.jobingestionplatform.provider.greenhouse.parser.GreenhouseParser;
 import com.jobingestion.jobingestionplatform.provider.greenhouse.scraper.GreenhouseScraper;
 import com.jobingestion.jobingestionplatform.provider.model.ScrapedJob;
@@ -45,7 +44,7 @@ public class GreenHouseProvider implements JobBoardProvider {
     @Override
     public ScrapedJob fetchJobDetails(ScrapedJob job) {
         Document jobPageDocument = greenhouseScraper.scrapeJobBoard(job.jobUrl());
-        String jobDescription = jobDetailParser.parse(jobPageDocument);
+        String jobDescription = jobDetailParser.parseDescription(jobPageDocument);
         return new ScrapedJob(job.externalJobId(), job.title(), job.department()
         , job.location(), job.jobUrl(), jobDescription);
     }
