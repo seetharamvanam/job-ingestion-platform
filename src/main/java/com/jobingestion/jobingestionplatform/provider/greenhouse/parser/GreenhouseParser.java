@@ -1,6 +1,7 @@
 package com.jobingestion.jobingestionplatform.provider.greenhouse.parser;
 
 import com.jobingestion.jobingestionplatform.provider.model.ScrapedJob;
+import com.jobingestion.jobingestionplatform.provider.parser.JobBoardParser;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.springframework.stereotype.Component;
@@ -53,7 +54,6 @@ public class GreenhouseParser implements JobBoardParser {
         return parts[parts.length-1];
     }
 
-    @Override
     public int extractTotalPages(Document document) {
         return document.select("button.pagination__link")
                 .stream()
