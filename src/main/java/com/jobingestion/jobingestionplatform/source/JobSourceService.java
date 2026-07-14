@@ -24,7 +24,8 @@ public class JobSourceService {
                 JobSource jobSourceEntity = JobSource.builder()
                         .companyName(job.companyName())
                         .activeStatus(job.active())
-                        .careerUrl(job.careerUrl()).build();
+                        .careerUrl(job.careerUrl())
+                        .provider(job.provider()).build();
                 newJobSources.add(jobSourceEntity);
             }else{
                 log.info("Job Source already exists", job.companyName(), job.careerUrl());
@@ -39,7 +40,7 @@ public class JobSourceService {
         List<JobSourceConfig> jobSourceConfigs = new ArrayList<>();
         for (JobSource jobSource : jobSources) {
             jobSourceConfigs.add(new JobSourceConfig(jobSource.getCompanyName(),
-                    jobSource.getCareerUrl(), jobSource.getActiveStatus()));
+                    jobSource.getCareerUrl(), jobSource.getActiveStatus(), jobSource.getProvider()));
         }
         return jobSourceConfigs;
     }
