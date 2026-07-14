@@ -1,30 +1,74 @@
 # Job Ingestion Platform
 
-Job Ingestion Platform is a Spring Boot service that collects software-related job postings from configured job boards, stores them in PostgreSQL, and exposes REST APIs for reading job sources, ingested jobs, and ingestion run history.
+Job Ingestion Platform is a Spring Boot service that collects software-related job postings from company career sites, stores them in PostgreSQL, and exposes REST APIs for reading job sources, ingested jobs, and ingestion-run history.
 
-The current implementation is focused on Greenhouse job boards. It scrapes active job sources on a fixed schedule, filters jobs by software/engineering keywords, stores new postings only once per source and external job id, and saves job descriptions from each job detail page when available.
+The platform currently supports **Greenhouse** and **Lever**. A provider-based architecture keeps job-board-specific scraping and parsing outside the main ingestion workflow, making it easier to add more providers without rewriting the orchestration layer.
 
-## What The Application Does
+## Features
 
-The application has four main responsibilities:
+- Database-backed job-source management
+- Scheduled ingestion with configurable fixed delay
+- Overlapping-run protection
+- Greenhouse listing pagination and job-detail scraping
+- Lever listing and job-detail scraping
+- Provider resolution through `JobBoardProviderFactory`
+- Software-role filtering by title and department
+- Duplicate prevention per source and external job ID
+- Ingestion-run tracking with found, inserted, and skipped counts
+- Paginated job APIs
+- Docker Compose setup for the application, PostgreSQL, and pgAdmin
+- Unit tests for Lever parsing, detail extraction, and provider orchestration
 
-1. Manage job sources, such as a company name and its Greenhouse careers URL.
-2. Periodically scrape active sources for job postings.
-3. Store relevant software-related jobs in PostgreSQL.
-4. Provide APIs to view job postings and ingestion run results.
+## Supported Providers
 
-At a high level, the flow is:
+| Provider | Status | Listing pagination | Job-detail scraping |
+|---|---|---:|---:|
+| Greenhouse | Supported | Yes | Yes |
+| Lever | Supported | Not currently required | Yes |
+| Ashby | Planned | TBD | Planned |
+| Workday | Planned | TBD | Planned |
+
+`WORKDAY` currently exists in `JobBoardProviderType`, but a `WorkdayProvider` has not been implemented. Do not create a Workday source yet; ingestion cannot resolve it through the provider factory.
+
+## How It Works
 
 ```text
 Job source API
   -> PostgreSQL job_sources table
   -> scheduled ingestion
-  -> Greenhouse scraper
-  -> Greenhouse parser
+  -> JobBoardProviderFactory
+       -> GreenHouseProvider
+       -> LeverProvider
+  -> provider-specific listing scrape and parse
   -> software job filter
-  -> job_postings table
+  -> duplicate check
+  -> provider-specific job-detail enrichment
+  -> PostgreSQL job_postings table
   -> jobs API
 ```
+
+Every active source includes a provider type. During ingestion, `JobBoardProviderFactory` selects the matching Spring-managed `JobBoardProvider`. Each provider returns the same `ScrapedJob` model, so filtering, duplicate detection, mapping, and persistence remain provider-independent.
+
+Descriptions are fetched only after a job passes the software-role filter and duplicate check. This avoids unnecessary detail-page requests for irrelevant or previously stored jobs.
+
+## Provider Behavior
+
+### Greenhouse
+
+- Downloads server-rendered Greenhouse pages with Jsoup
+- Detects listing pagination and processes every page
+- Extracts external ID, title, department, location, and job URL
+- Extracts detail text from `div.job__description.body`
+
+### Lever
+
+- Downloads server-rendered Lever pages with Jsoup
+- Parses jobs from `div.posting` elements
+- Reads the posting UUID from `data-qa-posting-id`, with URL-based fallback
+- Extracts titles, locations, and team/department information
+- Falls back to the surrounding posting-group title when a team is unavailable
+- Extracts detail text from `[data-qa=job-description]`
+- Preserves standard and EU Lever job URLs instead of hard-coding a Lever domain
 
 ## Tech Stack
 
@@ -33,10 +77,11 @@ Job source API
 - Gradle 9.5.1 wrapper
 - Spring Web
 - Spring Data JPA
-- PostgreSQL
-- Jsoup for HTML scraping/parsing
+- PostgreSQL 16
+- Jsoup
 - Lombok
-- Docker Compose for local PostgreSQL and pgAdmin
+- Docker and Docker Compose
+- JUnit 5 and Mockito through Spring Boot Test
 
 ## Repository Layout
 
@@ -50,39 +95,44 @@ Job source API
 ├── gradle/wrapper/
 ├── src/main/java/com/jobingestion/jobingestionplatform/
 │   ├── JobIngestionPlatformApplication.java
-│   ├── detail/          # Job detail page parsing
-│   ├── filter/          # Software-job filtering rules
-│   ├── ingestion/       # Main ingestion orchestration
-│   ├── ingestionrun/    # Ingestion run status/history APIs
-│   ├── job/             # Job entities, repositories, services, APIs
-│   ├── parser/          # Job board list-page parsing
-│   ├── scheduler/       # Fixed-delay ingestion scheduler
-│   ├── scraper/         # HTTP scraping using Jsoup
-│   └── source/          # Job source entities, services, APIs
+│   ├── filter/                 # Software-role filtering
+│   ├── ingestion/              # Main ingestion orchestration
+│   ├── ingestionrun/           # Run status, history, and APIs
+│   ├── job/                    # Job persistence and read APIs
+│   ├── provider/
+│   │   ├── JobBoardProvider.java
+│   │   ├── JobBoardProviderFactory.java
+│   │   ├── detail/             # Shared detail-parser contract
+│   │   ├── model/              # Provider-independent ScrapedJob
+│   │   ├── parser/             # Shared listing-parser contract
+│   │   ├── scraper/            # Shared scraper contract
+│   │   ├── greenhouse/         # Greenhouse implementation
+│   │   └── lever/              # Lever implementation
+│   ├── scheduler/              # Fixed-delay scheduler
+│   └── source/                 # Job-source persistence and APIs
 ├── src/main/resources/
 │   ├── application.properties
-│   ├── banner.txt
-│   └── job-sources.json
-└── src/test/java/
+│   └── banner.txt
+└── src/test/java/com/jobingestion/jobingestionplatform/
+    ├── detail/                 # Greenhouse detail-parser tests
+    └── lever/                  # Lever parser and provider tests
 ```
 
 ## Prerequisites
 
-Install these before running the application:
-
 - JDK 21
-- Docker Desktop, if you want to use the provided PostgreSQL setup
-- A terminal from the repository root
-- An API client such as curl, Postman, Insomnia, or a browser for GET endpoints
+- Docker Desktop or another Docker Compose-compatible runtime
+- A terminal opened at the repository root
+- An API client such as curl, Postman, or Insomnia
 
-You do not need to install Gradle manually. Use the included wrapper:
+Gradle does not need to be installed separately. Use the included wrapper:
 
 - Windows: `.\gradlew.bat`
 - macOS/Linux: `./gradlew`
 
-## Environment Variables
+## Configuration
 
-The app imports an optional `.env` file from the repository root:
+For local execution with `bootRun`, create a `.env` file in the repository root:
 
 ```properties
 DATABASE_NAME=jobIngestion
@@ -90,11 +140,9 @@ DATABASE_USERNAME=postgres
 DATABASE_PASSWORD=password
 ```
 
-These values match the provided `docker-compose.yaml`.
+The file is optional to Spring but the referenced database variables are required unless equivalent values are supplied another way. `.env` is ignored by Git and should not be committed.
 
-Create `D:\job-ingestion-platform\.env` with those values for local development. The `.env` file is ignored by git, so do not commit it.
-
-The database URL is built from `src/main/resources/application.properties`:
+Relevant application properties:
 
 ```properties
 spring.datasource.url=jdbc:postgresql://localhost:5432/${DATABASE_NAME}
@@ -104,22 +152,59 @@ spring.jpa.hibernate.ddl-auto=update
 app.scheduler.ingestion-fixed-delay-ms=120000
 ```
 
-`spring.jpa.hibernate.ddl-auto=update` means Hibernate creates or updates tables automatically when the app starts. This is convenient for local development, but be careful with it in production.
+`ddl-auto=update` is convenient for local development. Use explicit migrations rather than automatic schema updates for a production deployment.
 
-## Start The Local Database
+## Run Locally
 
-From the repository root:
+### Option 1: Run PostgreSQL in Docker and Spring Boot locally
+
+Start PostgreSQL and, optionally, pgAdmin:
 
 ```powershell
 docker compose up -d db pgadmin
 ```
 
-This starts:
+Create the `.env` file described above, then start the application.
 
-- PostgreSQL on `localhost:5432`
-- pgAdmin on `http://localhost:8181`
+Windows:
 
-Default PostgreSQL credentials:
+```powershell
+.\gradlew.bat bootRun
+```
+
+macOS/Linux:
+
+```bash
+./gradlew bootRun
+```
+
+### Option 2: Run the entire stack with Docker Compose
+
+The Dockerfile copies an already-built JAR, so build the application before building the image.
+
+Windows:
+
+```powershell
+.\gradlew.bat clean build
+docker compose up --build -d
+```
+
+macOS/Linux:
+
+```bash
+./gradlew clean build
+docker compose up --build -d
+```
+
+Services:
+
+| Service | Address |
+|---|---|
+| Application | `http://localhost:8080` |
+| PostgreSQL | `localhost:5432` |
+| pgAdmin | `http://localhost:8181` |
+
+Default database credentials:
 
 ```text
 Database: jobIngestion
@@ -134,114 +219,77 @@ Email: admin@example.com
 Password: password
 ```
 
-To stop the containers:
+Stop the containers without deleting data:
 
 ```powershell
 docker compose down
 ```
 
-To stop containers and remove the database volume, which deletes local data:
+Stop the containers and delete the local PostgreSQL volume:
 
 ```powershell
 docker compose down -v
 ```
 
-Only use `-v` when you intentionally want a clean database.
-
-## Run The Application Locally
-
-1. Start PostgreSQL:
-
-```powershell
-docker compose up -d db
-```
-
-2. Create the `.env` file shown above.
-
-3. Start the Spring Boot application:
-
-```powershell
-.\gradlew.bat bootRun
-```
-
-On macOS/Linux:
-
-```bash
-./gradlew bootRun
-```
-
-The application listens on:
-
-```text
-http://localhost:8080
-```
-
-## Build And Test
-
-Run tests:
-
-```powershell
-.\gradlew.bat test
-```
-
-Build the application jar:
-
-```powershell
-.\gradlew.bat clean build
-```
-
-After a successful build, the jar is created under:
-
-```text
-build/libs/
-```
-
-## Docker Image
-
-The `Dockerfile` runs a previously built Spring Boot jar:
-
-```powershell
-.\gradlew.bat clean build
-docker build -t job-ingestion-platform .
-```
-
-The provided Docker Compose file currently starts PostgreSQL and pgAdmin only. It does not define an application service. For the simplest local development workflow, run the app with `bootRun` and keep PostgreSQL in Docker.
+Only use `-v` when existing local data can be discarded.
 
 ## First-Time Usage
 
-The application needs at least one active job source before ingestion can collect jobs.
+The application does not load sources from a configuration file. Create at least one source through the API.
 
-Important: `src/main/resources/job-sources.json` contains a DoorDash Greenhouse source, but the startup loader is currently disabled because `StartupRunner` is commented out. That file is not automatically imported at application startup in the current code.
-
-Create a source through the API after the app starts:
-
-```powershell
-curl -X POST "http://localhost:8080/api/sources" `
-  -H "Content-Type: application/json" `
-  -d "[{`"companyName`":`"DoorDash`",`"careerUrl`":`"https://job-boards.greenhouse.io/doordashusa`",`"active`":true}]"
-```
-
-Equivalent JSON body:
+### Add a Greenhouse source
 
 ```json
 [
   {
     "companyName": "DoorDash",
     "careerUrl": "https://job-boards.greenhouse.io/doordashusa",
-    "active": true
+    "active": true,
+    "provider": "GREENHOUSE"
   }
 ]
 ```
 
-Then wait for the scheduler to run. The default delay is 120,000 ms, or 2 minutes. There is currently no manual ingestion API endpoint.
+### Add a Lever source
 
-To make ingestion run more frequently during local testing, override the scheduler delay:
+```json
+[
+  {
+    "companyName": "Grid",
+    "careerUrl": "https://jobs.lever.co/Grid",
+    "active": true,
+    "provider": "LEVER"
+  }
+]
+```
+
+PowerShell example:
+
+```powershell
+curl -X POST "http://localhost:8080/api/sources" `
+  -H "Content-Type: application/json" `
+  -d "[{`"companyName`":`"Grid`",`"careerUrl`":`"https://jobs.lever.co/Grid`",`"active`":true,`"provider`":`"LEVER`"}]"
+```
+
+The provider value is required, case-sensitive, and must match a value supported by an implemented provider. Sources are deduplicated by exact `careerUrl`.
+
+The scheduler can invoke its first run shortly after startup. After a run completes, Spring waits for the configured fixed delay before starting the next one. The default delay is 120,000 milliseconds, or two minutes.
+
+To use a shorter delay during local testing:
+
+Windows:
 
 ```powershell
 .\gradlew.bat bootRun --args="--app.scheduler.ingestion-fixed-delay-ms=30000"
 ```
 
-That runs the scheduler every 30 seconds after each completed run.
+macOS/Linux:
+
+```bash
+./gradlew bootRun --args="--app.scheduler.ingestion-fixed-delay-ms=30000"
+```
+
+There is currently no manual ingestion endpoint.
 
 ## REST API
 
@@ -251,75 +299,56 @@ Base URL:
 http://localhost:8080
 ```
 
-### Create Job Sources
+### Create job sources
 
 ```http
 POST /api/sources
 Content-Type: application/json
 ```
 
-Request body:
+The endpoint accepts a JSON list. Each object contains:
 
-```json
-[
-  {
-    "companyName": "DoorDash",
-    "careerUrl": "https://job-boards.greenhouse.io/doordashusa",
-    "active": true
-  }
-]
-```
+| Field | Required | Description |
+|---|---:|---|
+| `companyName` | Yes | Display name stored with the source |
+| `careerUrl` | Yes | Provider-hosted career-page URL |
+| `active` | Yes | Whether the scheduler should process the source |
+| `provider` | Yes | `GREENHOUSE` or `LEVER` |
 
-Response:
+Successful response:
 
 ```text
 201 Created
 ```
 
-Notes:
-
-- The endpoint accepts a list of sources.
-- Sources are deduplicated by `careerUrl`.
-- `active` should be a JSON boolean, not a quoted string.
-- Only active sources are scraped by the scheduler.
-
-### List Job Sources
+### List job sources
 
 ```http
 GET /api/sources
 ```
 
-Example:
-
-```powershell
-curl "http://localhost:8080/api/sources"
-```
-
-Response shape:
+Example response:
 
 ```json
 [
   {
-    "companyName": "DoorDash",
-    "careerUrl": "https://job-boards.greenhouse.io/doordashusa",
-    "active": true
+    "companyName": "Grid",
+    "careerUrl": "https://jobs.lever.co/Grid",
+    "active": true,
+    "provider": "LEVER"
   }
 ]
 ```
 
-### List Jobs
+### List jobs
 
 ```http
 GET /api/jobs?page=0&size=20
 ```
 
-Example:
+Pagination starts at page `0`. The defaults are `page=0` and `size=20`.
 
-```powershell
-curl "http://localhost:8080/api/jobs?page=0&size=20"
-```
-
-Response shape:
+Example response:
 
 ```json
 {
@@ -327,10 +356,10 @@ Response shape:
     {
       "id": 1,
       "title": "Software Engineer",
-      "companyName": "DoorDash",
-      "location": "New York, NY",
+      "companyName": "Grid",
+      "location": "Seattle, Washington",
       "department": "Engineering",
-      "jobUrl": "https://..."
+      "jobUrl": "https://jobs.lever.co/Grid/example-id"
     }
   ],
   "page": 0,
@@ -340,119 +369,87 @@ Response shape:
 }
 ```
 
-Pagination starts at page `0`.
-
-### Get Job Details
+### Get job details
 
 ```http
 GET /api/jobs/{id}
 ```
 
-Example:
-
-```powershell
-curl "http://localhost:8080/api/jobs/1"
-```
-
-Response shape:
+Example response:
 
 ```json
 {
   "id": 1,
   "title": "Software Engineer",
-  "companyName": "DoorDash",
-  "location": "New York, NY",
+  "companyName": "Grid",
+  "location": "Seattle, Washington",
   "department": "Engineering",
-  "jobUrl": "https://...",
+  "jobUrl": "https://jobs.lever.co/Grid/example-id",
   "jobDescription": "Full job description text...",
-  "discoveredAt": "2026-06-24T02:30:00"
+  "discoveredAt": "2026-07-14T10:30:00"
 }
 ```
 
-If a job id is not found, this endpoint returns `404 Not Found`.
+A missing job ID returns `404 Not Found`.
 
-### List Ingestion Runs
+### List ingestion runs
 
 ```http
 GET /api/ingestion-runs
 ```
 
-Example:
-
-```powershell
-curl "http://localhost:8080/api/ingestion-runs"
-```
-
-Response shape:
+Example response:
 
 ```json
 [
   {
     "id": 1,
-    "startedAt": "2026-06-24T02:30:00",
-    "completedAt": "2026-06-24T02:30:15",
+    "startedAt": "2026-07-14T10:30:00",
+    "completedAt": "2026-07-14T10:30:15",
     "status": "SUCCESS",
-    "jobsFound": 100,
-    "jobsInserted": 25,
-    "jobsSkipped": 75,
+    "jobsFound": 25,
+    "jobsInserted": 8,
+    "jobsSkipped": 17,
     "errorMessage": null
   }
 ]
 ```
 
-Possible statuses:
+Possible statuses are `RUNNING`, `SUCCESS`, and `FAILED`.
 
-- `RUNNING`
-- `SUCCESS`
-- `FAILED`
-
-### Get One Ingestion Run
+### Get one ingestion run
 
 ```http
 GET /api/ingestion-runs/{id}
 ```
 
-Example:
-
-```powershell
-curl "http://localhost:8080/api/ingestion-runs/1"
-```
-
-Current caveat: the controller is written as if it can return `404 Not Found`, but the service dereferences the entity before checking for null. A missing ingestion run id may currently produce a server error instead of a clean 404.
+The controller intends to return `404 Not Found` for a missing ID. The current service dereferences the missing entity before the controller receives it, so a nonexistent ID may currently return a server error instead.
 
 ## Scheduler Behavior
 
-Scheduling is enabled in `JobIngestionPlatformApplication` with `@EnableScheduling`.
-
-The scheduler is implemented in `JobIngestionScheduler` and runs with:
+Scheduling is enabled with `@EnableScheduling`. `JobIngestionScheduler` uses a fixed delay configured by:
 
 ```properties
 app.scheduler.ingestion-fixed-delay-ms=120000
 ```
 
-This means Spring waits for an ingestion run to complete, then waits the configured delay before starting the next run.
-
-The scheduler uses an `AtomicBoolean` guard so a new ingestion run is skipped if a previous run is still active.
-
-Each scheduler run:
+For each run, the scheduler:
 
 1. Creates an `ingestion_run` row with status `RUNNING`.
-2. Loads all active job sources from the database.
-3. Scrapes and parses jobs from each source.
-4. Saves new relevant jobs.
-5. Marks the run `SUCCESS` with counts, or `FAILED` with an error message.
+2. Loads active job sources.
+3. Resolves each source through `JobBoardProviderFactory`.
+4. Scrapes and parses provider-specific listing pages.
+5. Filters jobs by software-related title and department keywords.
+6. Skips jobs already stored for the same source and external ID.
+7. Fetches descriptions for new, relevant jobs.
+8. Saves new postings.
+9. Marks the run `SUCCESS`, or `FAILED` when an exception escapes ingestion.
 
-## Ingestion Rules
+An `AtomicBoolean` guard prevents overlapping executions within one application instance.
 
-Only active job sources are scraped.
+## Filtering and Deduplication
 
-The current scraper/parser is Greenhouse-specific:
-
-- `GreenhouseScraper` fetches HTML using Jsoup.
-- `GreenhouseParser` parses department sections and job rows.
-- `GreenhouseJobDetailParser` extracts text from `div.job__description.body`.
-
-The software job filter keeps jobs whose title or department contains one of these keywords:
+`SoftwareJobFilter` checks the lowercase combination of a job's title and department for any of these terms:
 
 ```text
 engineering
@@ -470,36 +467,29 @@ microservices
 cloud
 ```
 
-Jobs are deduplicated by:
+Jobs are deduplicated by the database constraint:
 
 ```text
 job_source_id + external_job_id
 ```
 
-If a matching job already exists, it is skipped.
+The same external ID can exist under different sources, while repeated runs for the same source do not insert it again.
 
 ## Database Tables
 
-Hibernate creates these main tables from JPA entities:
+Hibernate maps three main tables.
 
-### job_sources
-
-Stores configured career pages.
-
-Key fields:
+### `job_sources`
 
 - `id`
 - `company_name`
 - `career_url`
 - `active_status`
+- `provider`
 - `created_at`
 - `updated_at`
 
-### job_postings
-
-Stores ingested jobs.
-
-Key fields:
+### `job_postings`
 
 - `id`
 - `external_job_id`
@@ -513,17 +503,9 @@ Key fields:
 - `created_at`
 - `updated_at`
 
-Unique constraint:
+The table has a unique constraint on `job_source_id` and `external_job_id`.
 
-```text
-job_source_id + external_job_id
-```
-
-### ingestion_run
-
-Stores scheduler run history.
-
-Key fields:
+### `ingestion_run`
 
 - `id`
 - `started_at`
@@ -534,55 +516,49 @@ Key fields:
 - `jobs_skipped`
 - `error_message`
 
-## Common Local Workflow
+## Build and Test
 
-1. Start PostgreSQL:
+Run the complete test suite.
 
-```powershell
-docker compose up -d db
-```
-
-2. Create `.env`:
-
-```properties
-DATABASE_NAME=jobIngestion
-DATABASE_USERNAME=postgres
-DATABASE_PASSWORD=password
-```
-
-3. Start the app:
+Windows:
 
 ```powershell
-.\gradlew.bat bootRun
+.\gradlew.bat test
 ```
 
-4. Create at least one source:
+macOS/Linux:
+
+```bash
+./gradlew test
+```
+
+Run only the Lever tests:
+
+Windows:
 
 ```powershell
-curl -X POST "http://localhost:8080/api/sources" `
-  -H "Content-Type: application/json" `
-  -d "[{`"companyName`":`"DoorDash`",`"careerUrl`":`"https://job-boards.greenhouse.io/doordashusa`",`"active`":true}]"
+.\gradlew.bat test --tests "*Lever*"
 ```
 
-5. Wait for the scheduler to run.
+macOS/Linux:
 
-6. Check ingestion history:
+```bash
+./gradlew test --tests "*Lever*"
+```
+
+Build the executable JAR:
 
 ```powershell
-curl "http://localhost:8080/api/ingestion-runs"
+.\gradlew.bat clean build
 ```
 
-7. Check jobs:
-
-```powershell
-curl "http://localhost:8080/api/jobs?page=0&size=20"
-```
+The output is written under `build/libs/`.
 
 ## Troubleshooting
 
-### The app fails to start because database variables are missing
+### Database variables are missing
 
-Make sure `.env` exists in the repository root and contains:
+For local `bootRun`, ensure `.env` exists in the repository root and contains:
 
 ```properties
 DATABASE_NAME=jobIngestion
@@ -590,57 +566,55 @@ DATABASE_USERNAME=postgres
 DATABASE_PASSWORD=password
 ```
 
-### The app cannot connect to PostgreSQL
+### The application cannot connect to PostgreSQL
 
-Check that Docker is running and the database container is up:
+Check that the database is running:
 
 ```powershell
 docker compose ps
 ```
 
-If needed, restart the database:
+From the host machine, PostgreSQL is available at `localhost:5432`. From another Compose container, use `db:5432`.
+
+### PostgreSQL rejects `LEVER` with `job_sources_provider_check`
+
+A database created before Lever support may retain an older check constraint. `ddl-auto=update` may not update that existing constraint.
+
+Preserve existing data by updating the local constraint:
+
+```sql
+ALTER TABLE job_sources
+DROP CONSTRAINT job_sources_provider_check;
+
+ALTER TABLE job_sources
+ADD CONSTRAINT job_sources_provider_check
+CHECK (provider IN ('GREENHOUSE', 'LEVER', 'WORKDAY'));
+```
+
+For disposable local data, recreate the volume instead:
 
 ```powershell
-docker compose down
-docker compose up -d db
+docker compose down -v
+docker compose up -d
 ```
 
 ### No jobs appear in `/api/jobs`
 
-Check these in order:
+Check the following:
 
-1. Confirm at least one source exists:
+1. `GET /api/sources` returns at least one source.
+2. The source has `"active": true`.
+3. The provider is `GREENHOUSE` or `LEVER` and matches the career URL.
+4. An ingestion run has completed.
+5. The postings match at least one software-filter keyword.
+6. The postings were not already stored by an earlier run.
+7. Application logs do not show connection or parsing failures.
 
-```powershell
-curl "http://localhost:8080/api/sources"
-```
+Greenhouse listing pages must match the selectors used by `GreenhouseParser`. Lever listing pages must contain `div.posting` elements, while detail pages must contain `[data-qa=job-description]` for a nonempty description.
 
-2. Confirm the source has `"active": true`.
-3. Wait for the scheduler interval to pass.
-4. Check ingestion runs:
+### pgAdmin cannot connect
 
-```powershell
-curl "http://localhost:8080/api/ingestion-runs"
-```
-
-5. Check application logs for scrape or parsing failures.
-
-### The source in `job-sources.json` did not load
-
-That is expected in the current code. `StartupRunner` is commented out, so `JobSourceLoader` is not called during startup. Use `POST /api/sources` to create sources.
-
-### Ingestion runs, but inserts zero jobs
-
-Possible reasons:
-
-- The source has no jobs matching the software keyword filter.
-- The jobs were already inserted during a previous run.
-- The Greenhouse page markup changed and the parser selectors no longer match.
-- The external job board was temporarily unreachable.
-
-### pgAdmin cannot connect to the database
-
-When connecting from pgAdmin running in Docker, use the Docker Compose service name as the host:
+From pgAdmin running in Compose, use:
 
 ```text
 Host: db
@@ -650,43 +624,44 @@ Username: postgres
 Password: password
 ```
 
-When connecting from your host machine, use:
+From a host-installed database client, use `localhost` as the host.
 
-```text
-Host: localhost
-Port: 5432
-```
+## Adding a Provider
 
-## Important Current Limitations
+1. Add the provider value to `JobBoardProviderType`.
+2. Implement `JobBoardProvider` and annotate it with `@Component`.
+3. Add provider-specific scraper and parser components.
+4. Return listing results through the shared `ScrapedJob` record.
+5. Implement `getProviderType()` with the matching enum value.
+6. Add listing-parser, detail-parser, and provider tests.
+7. Update the database constraint through a schema migration.
 
-- Only Greenhouse-style job boards are supported by the current parser and scraper implementation.
-- There is no manual ingestion trigger API.
-- `job-sources.json` is present but not automatically loaded because `StartupRunner` is commented out.
-- The Docker Compose file does not run the Spring Boot application container.
-- Missing ingestion run ids may not return a clean `404` due to current service behavior.
-- Filtering is keyword-based and may skip relevant jobs or include irrelevant ones.
-- The application depends on external job board HTML structure, so scraper/parser behavior can break when those pages change.
+`JobBoardProviderFactory` automatically registers Spring-managed `JobBoardProvider` implementations. Do not add provider-specific conditions to `JobIngestionService`.
 
-## Development Notes
+## Current Limitations
 
-To add support for a new job board type:
+- Only Greenhouse and Lever are implemented.
+- There is no manual ingestion endpoint.
+- Source APIs currently support create and list operations only.
+- A missing ingestion-run ID may return a server error instead of a clean `404`.
+- Filtering is keyword-based and can produce false positives or false negatives.
+- External HTML changes can break provider selectors.
+- A provider or source failure can cause the overall scheduled run to be marked failed.
+- Closed postings are not marked inactive or removed.
+- Retries, rate limiting, and per-provider metrics are not implemented.
+- The in-memory overlap guard protects only one application instance.
 
-1. Create a new `JobBoardScraper` implementation if fetching needs different behavior.
-2. Create a new `JobBoardParser` implementation for the board's list page markup.
-3. Create a new `JobDetailParser` implementation if detail pages use different markup.
-4. Update ingestion orchestration to choose the correct parser/scraper per source type.
-5. Add parser tests with representative HTML samples.
+## Roadmap
 
-To change which jobs are considered relevant, edit the keyword list in `SoftwareJobFilter`.
+- Add Ashby support
+- Add Workday support
+- Add a manual ingestion endpoint
+- Add retries, rate limiting, and source-level failure isolation
+- Add provider-level metrics and observability
+- Detect and deactivate closed postings
+- Introduce versioned database migrations
+- Improve source validation and API error handling
 
-To change the scheduler frequency, update:
+## Contributing
 
-```properties
-app.scheduler.ingestion-fixed-delay-ms=120000
-```
-
-or override it at runtime:
-
-```powershell
-.\gradlew.bat bootRun --args="--app.scheduler.ingestion-fixed-delay-ms=30000"
-```
+Contributions, issue reports, and architectural feedback are welcome. When adding a provider, keep job-board-specific behavior inside its provider package and include representative parser tests.
