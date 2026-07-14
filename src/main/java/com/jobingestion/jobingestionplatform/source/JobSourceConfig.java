@@ -9,6 +9,8 @@ public record JobSourceConfig(
         @NotNull
         String careerUrl,
         @NotNull
-        Boolean active
+        Boolean active,
+        @NotNull
+        JobBoardProviderType provider
 ) {
 }

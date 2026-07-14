@@ -13,7 +13,8 @@ public class GreenhouseScraper implements JobBoardScraper {
     @Override
     public Document scrapeJobBoard(String careerUrl) {
         try{
-            return Jsoup.connect(careerUrl).get();
+            return Jsoup.connect(careerUrl).
+                    userAgent("Mozilla/5.0").timeout(15_000).get();
         } catch (IOException e) {
             throw new RuntimeException("Failed to scrape Job Board" + careerUrl, e);
         }
